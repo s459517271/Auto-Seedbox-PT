@@ -143,6 +143,21 @@ bash <(wget -qO- https://raw.githubusercontent.com/yimouleng/Auto-Seedbox-PT/mai
 
 > PSI 不可用时 `-a` 自动退化为 MemAvailable 判断，仍可作为护栏使用。
 
+**`-a` 动态控制器支持随时开关：**  
+
+启用后会创建并运行 `asp-qb-autotune.timer`。想关闭时执行：
+```bash
+sudo systemctl disable --now asp-qb-autotune.timer
+```
+需要恢复则执行（保留上一次动态下发参数）：
+```bash
+sudo systemctl enable --now asp-qb-autotune.timer
+```
+关闭后若想回到安装时的静态参数，重启 qB：
+```bash
+sudo systemctl restart qbittorrent-nox@你的用户名（默认为admin）
+```
+
 ---
 
 
