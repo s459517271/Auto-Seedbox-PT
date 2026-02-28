@@ -79,6 +79,16 @@ AUTOTUNE_COOKIE="/run/asp-qb_cookie.txt"
 AUTOTUNE_LOCK="/run/asp-qb-autotune.lock"
 AUTOTUNE_PSI_WARN="/run/asp-qb-autotune.psi_warned"
 
+# Autotune opt-in flag (requires -a)
+AUTOTUNE_OPTIN_FLAG="/etc/asp_autotune_optin"
+
+# ================= PSI 自动探测/自动启用 (Boot-time) =================
+# PSI 为内核能力。此处“启用”含义：若 PSI 可用，则开机自动启用 M1 动态控制器 timer。
+PSI_FLAG_FILE="/etc/asp_psi_supported"
+PSI_ENV_FILE="/etc/asp_psi_env.sh"
+PSI_DETECT_BIN="/usr/local/bin/asp-psi-detect.sh"
+PSI_DETECT_SVC="/etc/systemd/system/asp-psi-detect.service"
+
 # ================= 1. 工具函数 =================
 
 log_info() { echo -e "${GREEN}[INFO] $1${NC}" >&2; }
@@ -283,6 +293,24 @@ uninstall() {
     confirm=${confirm:-Y}
     [[ ! "$confirm" =~ ^[Yy]$ ]] && exit 0
 
+
+    # 二次确认：FileBrowser 可能包含大量文件/数据库（仅在检测到相关迹象时提示）
+    local fb_detected="false"
+    if command -v docker >/dev/null 2>&1; then
+        docker ps -a --format "{{.Names}}" 2>/dev/null | grep -qx "filebrowser" && fb_detected="true"
+    fi
+    if [[ -d "$target_home/filebrowser_data" || -d "$target_home/.config/filebrowser" || -f "$target_home/fb.db" ]]; then
+        fb_detected="true"
+    fi
+    local FB_PURGE="Y"
+    if [[ "$fb_detected" == "true" ]]; then
+        echo -e "${YELLOW}=================================================${NC}"
+        log_warn "检测到 FileBrowser 容器/数据痕迹，卸载将删除相关数据库与配置。"
+        read -p "是否一并删除 FileBrowser（含数据库）？此操作不可逆！ [Y/n]: " FB_PURGE < /dev/tty
+        FB_PURGE=${FB_PURGE:-Y}
+        echo -e "${YELLOW}=================================================${NC}"
+    fi
+
     execute_with_spinner "停止并移除服务守护进程" sh -c "
         systemctl stop qbittorrent-nox@${target_user} 2>/dev/null || true
         systemctl disable qbittorrent-nox@${target_user} 2>/dev/null || true
@@ -292,8 +320,21 @@ uninstall() {
             systemctl disable \"\$svc\" 2>/dev/null || true
         done
 
+        systemctl stop asp-qb-autotune.timer 2>/dev/null || true
         systemctl stop asp-qb-autotune.service 2>/dev/null || true
         systemctl disable asp-qb-autotune.timer 2>/dev/null || true
+        systemctl disable asp-qb-autotune.service 2>/dev/null || true
+
+        # PSI detector (boot-time)
+        systemctl stop asp-psi-detect.service 2>/dev/null || true
+        systemctl disable asp-psi-detect.service 2>/dev/null || true
+
+
+        # 彻底清理 systemd 残留（wants 链接/失败状态）
+        rm -f /etc/systemd/system/timers.target.wants/asp-qb-autotune.timer 2>/dev/null || true
+        rm -f /etc/systemd/system/multi-user.target.wants/asp-psi-detect.service 2>/dev/null || true
+        rm -f /etc/systemd/system/multi-user.target.wants/asp-qb-autotune.service 2>/dev/null || true
+        systemctl reset-failed asp-qb-autotune.timer asp-qb-autotune.service asp-psi-detect.service 2>/dev/null || true
 
         pkill -9 qbittorrent-nox 2>/dev/null || true
         rm -f /usr/bin/qbittorrent-nox
@@ -303,12 +344,17 @@ uninstall() {
 
         rm -f \"$AUTOTUNE_BIN\" \"$AUTOTUNE_SVC\" \"$AUTOTUNE_TMR\" \"$AUTOTUNE_ENV\"
         rm -f \"$AUTOTUNE_STATE\" \"$AUTOTUNE_COOKIE\" \"$AUTOTUNE_LOCK\" \"$AUTOTUNE_PSI_WARN\"
+
+        rm -f \"$PSI_DETECT_BIN\" \"$PSI_DETECT_SVC\" \"$PSI_FLAG_FILE\" \"$PSI_ENV_FILE\"
+
     "
 
     if command -v docker >/dev/null; then
         execute_with_spinner "清理 Docker 镜像与容器残留" sh -c "
-            docker rm -f vertex filebrowser 2>/dev/null || true
-            docker rmi lswl/vertex:stable filebrowser/filebrowser:latest 2>/dev/null || true
+            docker rm -f vertex 2>/dev/null || true
+            if [[ "${FB_PURGE:-Y}" =~ ^[Yy]$ ]]; then docker rm -f filebrowser 2>/dev/null || true; fi
+            docker rmi lswl/vertex:stable 2>/dev/null || true
+            if [[ "${FB_PURGE:-Y}" =~ ^[Yy]$ ]]; then docker rmi filebrowser/filebrowser:latest 2>/dev/null || true; fi
             docker network prune -f >/dev/null 2>&1 || true
         "
     fi
@@ -394,9 +440,12 @@ uninstall() {
 
     log_warn "清理配置文件..."
     if [[ -d "$target_home" ]]; then
-        rm -rf "$target_home/.config/qBittorrent" "$target_home/.local/share/qBittorrent" "$target_home/.cache/qBittorrent" \
-               "$target_home/vertex" "$target_home/.config/filebrowser" "$target_home/filebrowser_data"
-        log_info "已清理 $target_home 下的配置文件。"
+rm -rf "$target_home/.config/qBittorrent" "$target_home/.local/share/qBittorrent" "$target_home/.cache/qBittorrent" \
+               "$target_home/vertex"
+if [[ "${FB_PURGE:-Y}" =~ ^[Yy]$ ]]; then
+    rm -rf "$target_home/.config/filebrowser" "$target_home/filebrowser_data" "$target_home/fb.db"
+fi
+log_info "已清理 $target_home 下的配置文件。"
 
         if [[ -d "$target_home/Downloads" ]]; then
             echo -e "${YELLOW}=================================================${NC}"
@@ -413,8 +462,13 @@ uninstall() {
         fi
     fi
 
+    rm -f "$AUTOTUNE_OPTIN_FLAG" 2>/dev/null || true
+
     rm -rf "/root/.config/qBittorrent" "/root/.local/share/qBittorrent" "/root/.cache/qBittorrent" \
-           "/root/vertex" "/root/.config/filebrowser" "/root/filebrowser_data" "$ASP_ENV_FILE"
+           "/root/vertex" "$ASP_ENV_FILE"
+    if [[ "${FB_PURGE:-Y}" =~ ^[Yy]$ ]]; then
+        rm -rf "/root/.config/filebrowser" "/root/filebrowser_data" "/root/fb.db"
+    fi
 
     log_warn "建议重启服务器 (reboot) 以彻底清理内核内存驻留。"
     log_info "卸载完成。"
@@ -611,10 +665,94 @@ EOF
     echo ""
 }
 
+# ================= 4.0 PSI 自动探测与开机自动启用 =================
+# 目标:
+#  1) 开机后检测 PSI 是否可用（/proc/pressure/memory 可读）
+#  2) 若可用，则写入 PSI_FLAG_FILE 与 PSI_ENV_FILE（排障/状态展示）
+#  3) 若 PSI 可用且已部署 autotune 单元，则自动 enable+start timer（已启用/运行则跳过）
+install_psi_autodetect() {
+    cat > "$PSI_DETECT_BIN" << 'EOF_PSI_DETECT'
+#!/bin/bash
+set -euo pipefail
+IFS=$'\n\t'
+
+PSI_FLAG_FILE="/etc/asp_psi_supported"
+PSI_ENV_FILE="/etc/asp_psi_env.sh"
+
+AUTOTUNE_TMR_UNIT="asp-qb-autotune.timer"
+AUTOTUNE_TMR="/etc/systemd/system/asp-qb-autotune.timer"
+AUTOTUNE_ENV="/etc/asp_autotune_env.sh"
+
+psi_ok="0"
+if [[ -r /proc/pressure/memory ]]; then
+  if head -n 1 /proc/pressure/memory >/dev/null 2>&1; then
+    psi_ok="1"
+  fi
+fi
+
+if [[ "$psi_ok" == "1" ]]; then
+  echo "1" > "$PSI_FLAG_FILE"
+  cat > "$PSI_ENV_FILE" << EOF
+# Auto-Seedbox-PT PSI capability marker (generated at boot)
+export ASP_PSI_SUPPORTED=1
+EOF
+else
+  echo "0" > "$PSI_FLAG_FILE"
+  cat > "$PSI_ENV_FILE" << EOF
+# Auto-Seedbox-PT PSI capability marker (generated at boot)
+export ASP_PSI_SUPPORTED=0
+EOF
+fi
+chmod 600 "$PSI_FLAG_FILE" "$PSI_ENV_FILE" 2>/dev/null || true
+
+# 若 PSI 可用，则尝试自动启用 M1 动态控制器 timer（仅当 unit 存在）
+if [[ "$psi_ok" == "1" ]]; then
+  # 仅当用户已 opt-in（传过 -a）时，才自动启用动态控制器 timer
+  if [[ -f "/etc/asp_autotune_optin" ]]; then
+    if [[ -f "$AUTOTUNE_TMR" && -f "$AUTOTUNE_ENV" ]]; then
+      systemctl daemon-reload >/dev/null 2>&1 || true
+
+      if ! systemctl is-enabled --quiet "$AUTOTUNE_TMR_UNIT" 2>/dev/null; then
+        systemctl enable "$AUTOTUNE_TMR_UNIT" >/dev/null 2>&1 || true
+      fi
+      if ! systemctl is-active --quiet "$AUTOTUNE_TMR_UNIT" 2>/dev/null; then
+        systemctl start "$AUTOTUNE_TMR_UNIT" >/dev/null 2>&1 || true
+      fi
+    fi
+  fi
+fi
+
+exit 0
+EOF_PSI_DETECT
+    chmod +x "$PSI_DETECT_BIN"
+
+    cat > "$PSI_DETECT_SVC" << EOF
+[Unit]
+Description=ASP PSI Detect & Auto-Enable (Boot-time)
+After=network.target
+Wants=network.target
+
+[Service]
+Type=oneshot
+ExecStart=$PSI_DETECT_BIN
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    systemctl daemon-reload
+    systemctl enable asp-psi-detect.service >/dev/null 2>&1 || true
+    systemctl start asp-psi-detect.service >/dev/null 2>&1 || true
+
+    log_info "已部署 PSI 开机自动探测：asp-psi-detect.service"
+}
+
 # ================= 4.1 动态控制器（仅 Mode 1，需 -a） =================
 
 install_autotune_m1() {
-    [[ "$AUTOTUNE_ENABLE" == "true" ]] || return 0
+    # 说明：为解决“PSI 后开导致 timer/unit 不存在”的鸡与蛋问题，
+    #      这里在 Mode 1 下始终生成 M1 控制器相关文件（脚本/service/timer/env），
+    #      但仅在用户显式开启(-a)或当前已检测到 PSI 可用时才立即启用 timer。
     [[ "$TUNE_MODE" == "1" ]] || return 0
 
     local disk_class
@@ -837,10 +975,27 @@ WantedBy=timers.target
 EOF
 
     systemctl daemon-reload
-    systemctl enable asp-qb-autotune.timer >/dev/null 2>&1
-    systemctl restart asp-qb-autotune.timer >/dev/null 2>&1 || true
 
+# 仅在用户显式开启(-a)或当前系统已支持 PSI 时，立即启用/启动 timer。
+# 否则只生成文件，等待 asp-psi-detect.service 在后续 PSI 可用的开机阶段自动启用。
+local psi_now="false"
+if [[ -r /proc/pressure/memory ]] && head -n 1 /proc/pressure/memory >/dev/null 2>&1; then
+    psi_now="true"
+fi
+
+# 仅在用户显式开启(-a)（opt-in）时允许启用；PSI 仅作为“可启用”的必要条件之一
+local optin="false"
+if [[ "$AUTOTUNE_ENABLE" == "true" ]] || [[ -f "$AUTOTUNE_OPTIN_FLAG" ]]; then
+    optin="true"
+fi
+
+if [[ "$optin" == "true" && "$psi_now" == "true" ]]; then
+    systemctl enable asp-qb-autotune.timer >/dev/null 2>&1 || true
+    systemctl restart asp-qb-autotune.timer >/dev/null 2>&1 || true
     log_info "已启用 M1 动态控制器：asp-qb-autotune.timer"
+else
+    log_info "已生成 M1 动态控制器文件（未启用）。需 -a 且系统支持 PSI 时才会启用；若后续开启 PSI，可重跑脚本或由开机探测在 opt-in 后自动启用。"
+fi
 }
 
 # ================= 5. 应用部署 =================
@@ -1192,9 +1347,7 @@ install_apps() {
                 local extract_success=false
                 while [[ "$extract_success" == "false" ]]; do
                     local current_pass="${VX_ZIP_PASS:-ASP_DUMMY_PASS_NO_INPUT}"
-                    local unzip_cmd="unzip -q -o -P\"$current_pass\""
-
-                    if execute_with_spinner "解压 ZIP 备份数据" sh -c "$unzip_cmd \"$TEMP_DIR/bk.zip\" -d \"$extract_tmp\" < /dev/null"; then
+                    if execute_with_spinner "解压 ZIP 备份数据" unzip -q -o -P "$current_pass" "$TEMP_DIR/bk.zip" -d "$extract_tmp"; then
                         extract_success=true
                     else
                         echo -e "\n${YELLOW}=================================================${NC}"
@@ -1303,7 +1456,9 @@ EOF
         fi
 
         chown -R "$APP_USER:$APP_USER" "$HB/vertex"
-        chmod -R 777 "$HB/vertex/data"
+        find "$HB/vertex/data" -type d -exec chmod 775 {} \; 2>/dev/null || true
+find "$HB/vertex/data" -type f -exec chmod 664 {} \; 2>/dev/null || true
+find "$HB/vertex/data/script" -type f \( -name "*.sh" -o -name "*.py" \) -exec chmod 775 {} \; 2>/dev/null || true
 
         execute_with_spinner "拉取 Vertex 镜像" docker pull lswl/vertex:stable
         execute_with_spinner "启动 Vertex 容器" docker run -d --name vertex --restart unless-stopped -p $VX_PORT:3000 -v "$HB/vertex":/vertex -e TZ=Asia/Shanghai lswl/vertex:stable
@@ -1499,7 +1654,7 @@ echo -e "${CYAN}       / _ | / __/ |/ _ \\ ${NC}"
 echo -e "${CYAN}      / __ |_\\ \\  / ___/ ${NC}"
 echo -e "${CYAN}     /_/ |_/___/ /_/     ${NC}"
 echo -e "${BLUE}================================================================${NC}"
-echo -e "${PURPLE}     ✦ Auto-Seedbox-PT (ASP) 极限部署引擎 v3.5.0 ✦${NC}"
+echo -e "${PURPLE}     ✦ Auto-Seedbox-PT (ASP) 极限部署引擎 v3.5.2 ✦${NC}"
 echo -e "${PURPLE}     ✦               作者：Supcutie              ✦${NC}"
 echo -e "${GREEN}    🚀 一键部署 qBittorrent + Vertex + FileBrowser 刷流引擎${NC}"
 echo -e "${YELLOW}   💡 GitHub：https://github.com/yimouleng/Auto-Seedbox-PT ${NC}"
@@ -1619,11 +1774,22 @@ export MI_PORT=${MI_PORT:-8082}
 EOF
 chmod 600 "$ASP_ENV_FILE"
 
+# 若用户显式传入 -a，则写入 opt-in 标记（用于开机 PSI 探测后自动启用 timer）
+if [[ "$AUTOTUNE_ENABLE" == "true" ]]; then
+    echo "1" > "$AUTOTUNE_OPTIN_FLAG"
+    chmod 600 "$AUTOTUNE_OPTIN_FLAG" 2>/dev/null || true
+fi
+
 setup_user
 install_qbit
 [[ "$DO_VX" == "true" || "$DO_FB" == "true" ]] && install_apps
 [[ "$DO_TUNE" == "true" ]] && optimize_system
+
+# PSI 自动启用逻辑：若未显式传 -a，但系统支持 PSI 且处于 Mode 1，则自动开启 M1 控制器部署。
+# 说明：M1 控制器本身仍包含 PSI/非 PSI 的运行时自适应回退逻辑；这里只决定是否安装/启用该控制器。
+# 动态控制器不再在 PSI 可用时自动等价启用；需要用户显式 -a。
 install_autotune_m1
+install_psi_autodetect
 
 PUB_IP=$(curl -s --max-time 5 https://api.ipify.org || echo "ServerIP")
 
@@ -1648,9 +1814,52 @@ cat << EOF
 EOF
 echo -e "  ▶ 调优模式 : $tune_str"
 echo -e "  ▶ 运行用户 : ${YELLOW}$APP_USER${NC}"
+
+# 安全提示：Mode 1 下为支持“PSI 后期开启自动启用 M1 控制器”，会生成 root-only 的 env（含 WebUI 密码）
+if [[ "$TUNE_MODE" == "1" && -f "$AUTOTUNE_ENV" ]]; then
+    echo -e "  🔐 安全提示 : ${YELLOW}已生成 root-only 控制器凭据 (${AUTOTUNE_ENV})${NC}"
+fi
+
+# PSI 状态展示（内核能力探测 + boot detector + M1 timer）
+psi_support="不可用"
+if [[ -r /proc/pressure/memory ]] && head -n 1 /proc/pressure/memory >/dev/null 2>&1; then
+    psi_support="可用"
+fi
+
+# 若存在标记文件，则以标记文件为准（便于排障：是否为开机探测结果）
+if [[ -f "$PSI_ENV_FILE" ]]; then
+    # shellcheck disable=SC1090
+    source "$PSI_ENV_FILE" 2>/dev/null || true
+    if [[ "${ASP_PSI_SUPPORTED:-0}" == "1" ]]; then
+        psi_support="可用"
+    else
+        psi_support="不可用"
+    fi
+fi
+
+psi_detect_state="未启用"
+if systemctl is-enabled --quiet asp-psi-detect.service 2>/dev/null; then
+    psi_detect_state="已启用"
+fi
+
+autotune_state="未启用"
+if [[ -f "$AUTOTUNE_TMR" ]]; then
+    if systemctl is-enabled --quiet asp-qb-autotune.timer 2>/dev/null; then
+        autotune_state="已启用"
+    fi
+    if systemctl is-active --quiet asp-qb-autotune.timer 2>/dev/null; then
+        autotune_state="${autotune_state}/运行中"
+    fi
+fi
+
+echo -e "  ▶ PSI 支持 : ${YELLOW}${psi_support}${NC}  (Detector: ${YELLOW}${psi_detect_state}${NC})"
+if [[ -f "$AUTOTUNE_TMR" ]]; then
+    echo -e "  ▶ M1 动态控制器 : ${YELLOW}${autotune_state}${NC}"
+fi
 echo ""
 echo -e " ------------------------ ${CYAN}🌐 访问地址${NC} ------------------------"
 echo -e "  🧩 qBittorrent WebUI : ${GREEN}http://$PUB_IP:$QB_WEB_PORT${NC}"
+echo -e "  ${YELLOW}安全提示: WebUI 为兼容部分环境已关闭 Host/CSRF 校验且默认 HTTP 明文，可手动在qb中关闭。${NC}"
 if [[ "$INSTALLED_MAJOR_VER" == "5" ]]; then
     echo -e "  ${YELLOW}提示: 若首次看到种子为 0，可 Ctrl+F5 强制刷新${NC}"
 fi
@@ -1678,6 +1887,7 @@ echo -e "  ⚙️ qB 配置   : $HB/.config/qBittorrent"
 echo ""
 echo -e " ------------------------ ${CYAN}🛠️ 维护指令${NC} ------------------------"
 echo -e "  重启 qB : ${YELLOW}systemctl restart qbittorrent-nox@$APP_USER${NC}"
+echo -e "  动态控制器说明: 需要 ${YELLOW}-a${NC} opt-in 且系统支持 ${YELLOW}PSI${NC} 才会启用（开机自动检测）。"
 if [[ "$TUNE_MODE" == "1" && "$AUTOTUNE_ENABLE" == "true" ]]; then
 echo -e "  动态控制器 : ${YELLOW}systemctl status asp-qb-autotune.timer${NC}"
 echo -e "  动态日志   : ${YELLOW}journalctl -t asp-qb-autotune -n 50${NC}"
