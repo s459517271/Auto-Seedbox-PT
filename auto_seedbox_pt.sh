@@ -1089,6 +1089,7 @@ Accepted=true
 [Preferences]
 General\Locale=zh_CN
 WebUI\Locale=zh_CN
+WebUI\Language=zh_CN
 Downloads\SavePath=$HB/Downloads/
 WebUI\Password_PBKDF2="$pass_hash"
 WebUI\Port=$QB_WEB_PORT
@@ -1180,7 +1181,7 @@ EOF
             "http://127.0.0.1:$QB_WEB_PORT/api/v2/app/preferences" > "$TEMP_DIR/current_pref.json"
 
         local patch_json
-        patch_json="{\"locale\":\"zh_CN\",\"bittorrent_protocol\":1,\"dht\":false,\"pex\":false,\"lsd\":false,\"announce_to_all_trackers\":true,\"announce_to_all_tiers\":true,\"queueing_enabled\":false,\"bdecode_depth_limit\":10000,\"bdecode_token_limit\":10000000,\"strict_super_seeding\":false,\"max_ratio_action\":0,\"max_ratio\":-1,\"max_seeding_time\":-1,\"file_pool_size\":5000,\"peer_tos\":2"
+        patch_json="{\"locale\":\"zh_CN\",\"web_ui_language\":\"zh_CN\",\"bittorrent_protocol\":1,\"dht\":false,\"pex\":false,\"lsd\":false,\"announce_to_all_trackers\":true,\"announce_to_all_tiers\":true,\"queueing_enabled\":false,\"bdecode_depth_limit\":10000,\"bdecode_token_limit\":10000000,\"strict_super_seeding\":false,\"max_ratio_action\":0,\"max_ratio\":-1,\"max_seeding_time\":-1,\"file_pool_size\":5000,\"peer_tos\":2"
 
         local mem_kb_qbit mem_gb_qbit sb_low sb_buf sb_factor
         mem_kb_qbit=$(grep MemTotal /proc/meminfo | awk '{print $2}')
