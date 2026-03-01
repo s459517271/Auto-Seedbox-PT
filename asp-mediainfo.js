@@ -54,101 +54,119 @@
         }
     }, true);
 
-    const openMediaInfo = (fileName) => {
-        let fullPath = (getCurrentPath() + '/' + fileName).replace(/\/\//g, '/');
+        const openMediaInfo = (fileName) => {
+        const fullPath = (getCurrentPath() + '/' + fileName).replace(/\/\//g, '/');
         if (typeof Swal === 'undefined') {
-            alert('UI组件正在加载，请稍后再试...'); return;
+            alert('界面组件加载中，请稍后重试...');
+            return;
         }
+
+        const esc = (v) => String(v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
         Swal.fire({
             title: '解析中...',
-            text: '正在读取底层媒体轨道信息',
+            text: '正在读取媒体轨道信息',
             allowOutsideClick: false,
+            allowEscapeKey: false,
             didOpen: () => Swal.showLoading()
         });
-        
+
         fetch(`/api/mi?file=${encodeURIComponent(fullPath)}`)
-        .then(r => r.json())
-        .then(data => {
-            if(data.error) throw new Error(data.error);
-            
-            let rawText = "";
-            let html = `<style>
-                .mi-box { text-align:left; font-size:13px; background:#1e1e1e; color:#d4d4d4; padding:15px; border-radius:8px; max-height:550px; overflow-y:auto; font-family: 'Consolas', 'Courier New', monospace; user-select:text;}
-                .mi-track { margin-bottom: 20px; }
-                .mi-track-header { font-size: 15px; font-weight: bold; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid #444; }
-                .mi-Video .mi-track-header { color: #569cd6; border-bottom-color: #569cd6; }
-                .mi-Audio .mi-track-header { color: #4ec9b0; border-bottom-color: #4ec9b0; }
-                .mi-Text .mi-track-header { color: #ce9178; border-bottom-color: #ce9178; }
-                .mi-General .mi-track-header { color: #dcdcaa; border-bottom-color: #dcdcaa; }
-                .mi-Menu .mi-track-header { color: #c586c0; border-bottom-color: #c586c0; }
-                .mi-item { display: flex; padding: 3px 0; line-height: 1.5; border-bottom: 1px dashed #333;}
-                .mi-key { width: 180px; flex-shrink: 0; color: #9cdcfe; }
-                .mi-val { flex-grow: 1; color: #cecece; word-wrap: break-word; }
-            </style><div class="mi-box">`;
+            .then((r) => r.json())
+            .then((data) => {
+                if (data.error) throw new Error(data.error);
 
-            if (data.media && data.media.track) {
-                data.media.track.forEach(t => {
-                    let type = t['@type'] || 'Unknown';
-                    // 头部空行，更符合原生 CLI 观感
-                    rawText += `${type}\n`;
-                    html += `<div class="mi-track mi-${type}"><div class="mi-track-header">${type}</div>`;
+                let rawText = '';
+                let html = `<style>
+                    .mi-wrap{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px;color:#111827;text-align:left}
+                    .mi-toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+                    .mi-btn{border:1px solid #d1d5db;background:#fff;color:#111827;border-radius:8px;padding:7px 12px;font-size:13px;cursor:pointer}
+                    .mi-btn:hover{background:#f9fafb}
+                    .mi-status{font-size:12px;color:#4b5563}
+                    .mi-box{max-height:540px;overflow:auto;border:1px solid #e5e7eb;border-radius:8px;background:#fafafa;padding:12px;font-family:Consolas,'Courier New',monospace;font-size:13px;line-height:1.6}
+                    .mi-track{margin-bottom:14px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:10px}
+                    .mi-track:last-child{margin-bottom:0}
+                    .mi-track-header{font-size:14px;font-weight:700;color:#111827;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #e5e7eb}
+                    .mi-item{display:flex;gap:10px;padding:4px 0;border-bottom:1px dashed #e5e7eb}
+                    .mi-item:last-child{border-bottom:none}
+                    .mi-key{width:200px;flex-shrink:0;color:#4b5563}
+                    .mi-val{flex:1;color:#111827;word-break:break-word}
+                    @media (max-width:760px){.mi-item{flex-direction:column;gap:2px}.mi-key{width:auto}}
+                </style>`;
 
-                    for (let k in t) { 
-                        if (k === '@type') continue;
-                        let val = t[k];
-                        if (typeof val === 'object') val = JSON.stringify(val);
-                        
-                        // 优化对齐逻辑：原生格式通常是 Key 占一定宽度，然后跟 ' : '
-                        let paddedKey = String(k).padEnd(32, ' ');
-                        rawText += `${paddedKey}: ${val}\n`;
+                html += `<div class='mi-wrap'>`;
+                html += `<div class='mi-toolbar'>`;
+                html += `<button type='button' class='mi-btn' id='mi_copy_raw'>复制纯文本</button>`;
+                html += `<button type='button' class='mi-btn' id='mi_copy_bbcode'>复制 BBCode</button>`;
+                html += `<span class='mi-status' id='mi_status'>复制操作不会关闭弹窗，点“关闭”才会退出。</span>`;
+                html += `</div>`;
+                html += `<div class='mi-box'>`;
 
-                        html += `<div class="mi-item"><div class="mi-key">${k}</div><div class="mi-val">${val}</div></div>`;
-                    }
-                    rawText += `\n`;
-                    html += `</div>`;
-                });
-            } else { 
-                rawText = JSON.stringify(data, null, 2); 
-                html += `<pre>${rawText}</pre>`;
-            }
-            html += `</div>`;
-            
-            // 优化：提供纯文本与 BBCode 两种复制选项
-            Swal.fire({ 
-                title: fileName, 
-                html: html, 
-                width: '850px',
-                showCancelButton: true,
-                showDenyButton: true, // 开启第三个按钮
-                confirmButtonColor: '#3085d6',
-                denyButtonColor: '#28a745', // 绿色
-                cancelButtonColor: '#555',
-                confirmButtonText: '📋 纯文本',
-                denyButtonText: '🏷️ 复制 BBCode',
-                cancelButtonText: '关闭'
-            }).then((result) => {
-                let textToCopy = rawText.trim();
-                let successMsg = '纯文本复制成功！';
+                if (data.media && Array.isArray(data.media.track)) {
+                    data.media.track.forEach((t) => {
+                        const type = t['@type'] || 'Unknown';
+                        rawText += `${type}\n`;
+                        html += `<div class='mi-track'><div class='mi-track-header'>${esc(type)}</div>`;
 
-                if (result.isConfirmed) {
-                    // 纯文本
-                    textToCopy = rawText.trim();
-                } else if (result.isDenied) {
-                    // BBCode 格式
-                    textToCopy = `[quote]\n${rawText.trim()}\n[/quote]`;
-                    successMsg = 'BBCode 复制成功，快去发种吧！';
+                        Object.keys(t).forEach((k) => {
+                            if (k === '@type') return;
+                            let val = t[k];
+                            if (typeof val === 'object') val = JSON.stringify(val);
+                            const valStr = String(val ?? '');
+                            const paddedKey = String(k).padEnd(32, ' ');
+                            rawText += `${paddedKey}: ${valStr}\n`;
+                            html += `<div class='mi-item'><div class='mi-key'>${esc(k)}</div><div class='mi-val'>${esc(valStr)}</div></div>`;
+                        });
+
+                        rawText += `\n`;
+                        html += `</div>`;
+                    });
                 } else {
-                    Swal.close();
-                    return;
+                    rawText = JSON.stringify(data, null, 2);
+                    html += `<pre>${esc(rawText)}</pre>`;
                 }
 
-                copyText(textToCopy).then(() => {
-                    Swal.fire({toast: true, position: 'top-end', icon: 'success', title: successMsg, showConfirmButton: false, timer: 2000});
-                }).catch(() => {
-                    Swal.fire('复制失败', '请手动选中上方文本进行复制', 'error');
+                html += `</div></div>`;
+
+                Swal.fire({
+                    title: `MediaInfo：${fileName}`,
+                    html,
+                    width: '920px',
+                    showCancelButton: true,
+                    showConfirmButton: false,
+                    cancelButtonText: '关闭',
+                    cancelButtonColor: '#6b7280',
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    didOpen: () => {
+                        const rawBtn = document.getElementById('mi_copy_raw');
+                        const bbBtn = document.getElementById('mi_copy_bbcode');
+                        const status = document.getElementById('mi_status');
+
+                        if (rawBtn) {
+                            rawBtn.addEventListener('click', () => {
+                                copyText(rawText.trim()).then(() => {
+                                    if (status) status.textContent = '纯文本已复制到剪贴板。';
+                                }).catch(() => {
+                                    if (status) status.textContent = '复制失败，请手动复制下方内容。';
+                                });
+                            });
+                        }
+
+                        if (bbBtn) {
+                            bbBtn.addEventListener('click', () => {
+                                const bbcode = `[quote]\n${rawText.trim()}\n[/quote]`;
+                                copyText(bbcode).then(() => {
+                                    if (status) status.textContent = 'BBCode 已复制到剪贴板。';
+                                }).catch(() => {
+                                    if (status) status.textContent = '复制失败，请手动复制下方内容。';
+                                });
+                            });
+                        }
+                    }
                 });
-            });
-        }).catch(e => Swal.fire('解析失败', e.toString(), 'error'));
+            })
+            .catch((e) => Swal.fire('解析失败', e.toString(), 'error'));
     };
 
     // 性能优化：加入防抖 (Debounce) 机制

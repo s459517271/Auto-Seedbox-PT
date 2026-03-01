@@ -68,18 +68,19 @@
     return Math.max(lo, Math.min(hi, v));
   }
 
-  async function promptSettings(fileName) {
+    async function promptSettings(fileName) {
     if (typeof Swal === 'undefined') {
-      alert('UI is still loading, please retry in a moment.');
+      alert('界面组件加载中，请稍后重试。');
       return null;
     }
 
     const fullPath = (getCurrentDir() + '/' + fileName).replace(/\/\//g, '/');
 
     Swal.fire({
-      title: 'Reading media metadata...',
-      html: 'Detecting source resolution for better defaults.',
+      title: '读取视频信息中...',
+      html: '正在探测原始分辨率，用于设置默认值。',
       allowOutsideClick: false,
+      allowEscapeKey: false,
       didOpen: () => Swal.showLoading()
     });
 
@@ -94,82 +95,84 @@
 
     const html = `
       <style>
-        .ss-wrap{background:linear-gradient(145deg,#0b1220 0%,#111a2f 45%,#0f172a 100%);border:1px solid rgba(148,163,184,.26);border-radius:18px;padding:16px 16px 14px;color:#e2e8f0;text-align:left;box-shadow:0 16px 40px rgba(2,6,23,.35)}
-        .ss-head{margin-bottom:14px}
-        .ss-title{font-size:16px;font-weight:800;letter-spacing:.2px}
-        .ss-sub{margin-top:6px;font-size:12px;opacity:.88;line-height:1.5}
-        .ss-sub code{padding:2px 6px;border-radius:8px;background:rgba(15,23,42,.75);border:1px solid rgba(148,163,184,.35)}
+        .ss-wrap{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:18px;color:#111827;text-align:left}
+        .ss-head{margin-bottom:16px}
+        .ss-title{font-size:17px;font-weight:700;line-height:1.4;margin-bottom:6px}
+        .ss-sub{font-size:13px;color:#4b5563;line-height:1.6}
+        .ss-sub code{background:#f3f4f6;border:1px solid #e5e7eb;border-radius:6px;padding:2px 6px}
         .ss-meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-        .ss-pill{font-size:11px;padding:4px 8px;border-radius:999px;background:rgba(30,41,59,.92);border:1px solid rgba(148,163,184,.35)}
-        .ss-form{display:grid;grid-template-columns:140px 1fr;gap:12px 12px;align-items:start}
-        .ss-form label{padding-top:8px;font-size:12px;opacity:.9;font-weight:700;letter-spacing:.2px}
+        .ss-pill{font-size:12px;color:#374151;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:4px 8px}
+        .ss-form{display:grid;grid-template-columns:150px 1fr;gap:14px 14px;align-items:start}
+        .ss-form label{font-size:13px;font-weight:600;color:#111827;padding-top:8px}
         .ss-control{display:flex;flex-direction:column;gap:8px}
-        .ss-form input[type='number']{width:100%;padding:10px 12px;border-radius:12px;border:1px solid rgba(148,163,184,.42);background:rgba(15,23,42,.78);color:#f8fafc;outline:none}
-        .ss-form input[type='number']:focus{border-color:#22d3ee;box-shadow:0 0 0 3px rgba(34,211,238,.2)}
-        .ss-form input[type='range']{width:100%;accent-color:#22d3ee}
+        .ss-form input[type='number']{width:100%;padding:10px 12px;border-radius:8px;border:1px solid #d1d5db;background:#fff;color:#111827;outline:none}
+        .ss-form input[type='number']:focus{border-color:#2563eb;box-shadow:0 0 0 2px rgba(37,99,235,.15)}
+        .ss-form input[type='range']{width:100%;accent-color:#2563eb}
         .ss-chiprow{display:flex;flex-wrap:wrap;gap:8px}
-        .ss-chip{cursor:pointer;user-select:none;padding:6px 10px;border-radius:999px;border:1px solid rgba(148,163,184,.35);background:rgba(15,23,42,.7);font-size:12px;transition:.2s ease}
-        .ss-chip:hover{transform:translateY(-1px);border-color:rgba(103,232,249,.8);background:rgba(6,182,212,.2)}
-        .ss-help{font-size:12px;opacity:.8;line-height:1.5}
-        .ss-value{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:999px;background:rgba(15,23,42,.8);border:1px solid rgba(148,163,184,.32)}
-        @media (max-width:760px){.ss-form{grid-template-columns:1fr}.ss-form label{padding-top:0}}
+        .ss-chip{cursor:pointer;user-select:none;padding:5px 10px;border-radius:8px;border:1px solid #d1d5db;background:#fff;font-size:12px;color:#374151}
+        .ss-chip:hover{background:#f9fafb;border-color:#9ca3af}
+        .ss-help{font-size:12px;color:#6b7280;line-height:1.6}
+        .ss-value{display:inline-block;padding:2px 8px;border-radius:6px;background:#f3f4f6;border:1px solid #e5e7eb;color:#111827}
+        @media (max-width:760px){.ss-form{grid-template-columns:1fr}}
       </style>
 
       <div class='ss-wrap'>
         <div class='ss-head'>
-          <div class='ss-title'>Screenshot Studio</div>
-          <div class='ss-sub'>File: <code>${escapeHtml(fileName)}</code></div>
+          <div class='ss-title'>截图参数设置</div>
+          <div class='ss-sub'>文件：<code>${escapeHtml(fileName)}</code></div>
           <div class='ss-meta'>
-            <span class='ss-pill'>Source: ${origW}${origH ? 'x' + origH : ''}</span>
-            <span class='ss-pill'>Output: JPG + ZIP</span>
-            <span class='ss-pill'>Temp: /tmp/asp_screens</span>
+            <span class='ss-pill'>源分辨率：${origW}${origH ? 'x' + origH : ''}</span>
+            <span class='ss-pill'>输出格式：JPG + ZIP</span>
+            <span class='ss-pill'>临时目录：/tmp/asp_screens</span>
           </div>
         </div>
 
         <div class='ss-form'>
-          <label>Screenshots</label>
+          <label>截图数量</label>
           <div class='ss-control'>
             <input id='ss_n' type='number' min='1' max='20' value='6'/>
             <div class='ss-chiprow' id='ss_n_chips'>
-              ${presetNs.map((n) => `<span class='ss-chip' data-n='${n}'>${n} shots</span>`).join('')}
+              ${presetNs.map((n) => `<span class='ss-chip' data-n='${n}'>${n} 张</span>`).join('')}
             </div>
           </div>
 
-          <label>Width</label>
+          <label>宽度</label>
           <div class='ss-control'>
             <input id='ss_w' type='number' min='320' max='3840' value='${origW}'/>
             <div class='ss-chiprow' id='ss_w_chips'>
-              ${presetWs.map((w) => `<span class='ss-chip' data-w='${w}'>${w}${w === origW ? ' (source)' : ''}</span>`).join('')}
+              ${presetWs.map((w) => `<span class='ss-chip' data-w='${w}'>${w}${w === origW ? '（原始）' : ''}</span>`).join('')}
             </div>
           </div>
 
-          <label>Skip Head (%)</label>
+          <label>跳过片头（%）</label>
           <div class='ss-control'>
             <input id='ss_head' type='range' min='0' max='20' value='5'/>
-            <div class='ss-help'>Current <span class='ss-value'><span id='ss_head_v'>5</span>%</span></div>
+            <div class='ss-help'>当前：<span class='ss-value'><span id='ss_head_v'>5</span>%</span></div>
           </div>
 
-          <label>Skip Tail (%)</label>
+          <label>跳过片尾（%）</label>
           <div class='ss-control'>
             <input id='ss_tail' type='range' min='0' max='20' value='5'/>
-            <div class='ss-help'>Current <span class='ss-value'><span id='ss_tail_v'>5</span>%</span></div>
+            <div class='ss-help'>当前：<span class='ss-value'><span id='ss_tail_v'>5</span>%</span></div>
           </div>
 
-          <label>Tips</label>
-          <div class='ss-help'>Head/Tail skip helps avoid OP/ED and credits. Set to 0 when full-range capture is needed.</div>
+          <label>说明</label>
+          <div class='ss-help'>跳过片头/片尾可减少 OP/ED 或字幕影响；若需完整区间截图可设为 0。</div>
         </div>
       </div>
     `;
 
     const result = await Swal.fire({
-      title: 'Screenshot Settings',
+      title: '截图设置',
       html,
-      width: 840,
+      width: 860,
       showCancelButton: true,
-      confirmButtonText: 'Start Capture',
-      cancelButtonText: 'Cancel',
-      confirmButtonColor: '#0ea5e9',
-      cancelButtonColor: '#475569',
+      confirmButtonText: '开始截图',
+      cancelButtonText: '取消',
+      confirmButtonColor: '#2563eb',
+      cancelButtonColor: '#6b7280',
+      allowOutsideClick: false,
+      allowEscapeKey: false,
       didOpen: () => {
         const head = document.getElementById('ss_head');
         const tail = document.getElementById('ss_tail');
@@ -211,14 +214,15 @@
     return result.value;
   }
 
-  function openScreenshot(fileName) {
+    function openScreenshot(fileName) {
     promptSettings(fileName).then((opt) => {
       if (!opt) return;
 
       Swal.fire({
-        title: 'Generating screenshots...',
-        html: `Count <b>${opt.n}</b> / Width <b>${opt.width}</b> / Head <b>${opt.head}%</b> / Tail <b>${opt.tail}%</b>`,
+        title: '截图生成中...',
+        html: `数量 <b>${opt.n}</b> / 宽度 <b>${opt.width}</b> / 跳过片头 <b>${opt.head}%</b> / 跳过片尾 <b>${opt.tail}%</b>`,
         allowOutsideClick: false,
+        allowEscapeKey: false,
         didOpen: () => Swal.showLoading()
       });
 
@@ -228,7 +232,7 @@
         .then((r) => r.json().then((j) => ({ ok: r.ok, status: r.status, json: j })))
         .then(({ ok, status, json }) => {
           if (!ok || !json || !json.base || !Array.isArray(json.files) || json.files.length === 0) {
-            const msg = (json && json.error) ? json.error : `Request failed (HTTP ${status})`;
+            const msg = (json && json.error) ? json.error : `请求失败 (HTTP ${status})`;
             throw new Error(msg);
           }
 
@@ -239,77 +243,91 @@
           const zipUrl = json.zip ? `${base}${json.zip}` : null;
 
           let html = `<style>
-            .ss-panel{background:linear-gradient(160deg,#081226 0%,#111827 45%,#101a33 100%);border:1px solid rgba(148,163,184,.25);border-radius:18px;padding:14px;color:#e5e7eb;box-shadow:0 16px 42px rgba(2,6,23,.38)}
-            .ss-top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
-            .ss-file{font-size:13px;opacity:.95}
-            .ss-file code{padding:3px 7px;border-radius:7px;background:rgba(15,23,42,.75);border:1px solid rgba(148,163,184,.32)}
-            .ss-badges{display:flex;gap:8px;flex-wrap:wrap}
-            .ss-badge{font-size:11px;padding:4px 8px;border-radius:999px;background:rgba(2,132,199,.18);border:1px solid rgba(125,211,252,.45)}
-            .ss-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}
-            .ss-card{border-radius:14px;overflow:hidden;border:1px solid rgba(148,163,184,.28);background:rgba(15,23,42,.65);transition:transform .15s ease,border-color .15s ease,box-shadow .15s ease}
-            .ss-card:hover{transform:translateY(-2px);border-color:rgba(34,211,238,.85);box-shadow:0 8px 20px rgba(6,182,212,.22)}
-            .ss-bar{padding:8px 10px;display:flex;justify-content:space-between;align-items:center;background:linear-gradient(90deg,rgba(15,23,42,.2),rgba(15,23,42,.65));font-size:12px}
-            .ss-idx{font-weight:800}
-            .ss-tip{opacity:.72}
-            .ss-img{width:100%;display:block}
-            .ss-foot{margin-top:12px;padding:10px;border-radius:12px;background:rgba(15,23,42,.78);border:1px solid rgba(148,163,184,.28);font-size:12px;line-height:1.6}
-            .ss-foot code{padding:2px 6px;border-radius:7px;background:rgba(30,41,59,.86)}
-            .ss-links{margin-top:8px;word-break:break-all}
-            .ss-links a{color:#7dd3fc;text-decoration:none}
-            .ss-links a:hover{text-decoration:underline}
+            .ss-panel{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px;color:#111827}
+            .ss-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+            .ss-file{font-size:13px;color:#374151;line-height:1.6}
+            .ss-file code{background:#f3f4f6;border:1px solid #e5e7eb;border-radius:6px;padding:2px 6px}
+            .ss-meta{display:flex;gap:8px;flex-wrap:wrap}
+            .ss-meta span{font-size:12px;color:#4b5563;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:4px 8px}
+            .ss-action-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0 12px}
+            .ss-btn{border:1px solid #d1d5db;background:#fff;color:#111827;border-radius:8px;padding:7px 12px;font-size:13px;cursor:pointer}
+            .ss-btn:hover{background:#f9fafb}
+            .ss-btn-primary{border-color:#2563eb;color:#1d4ed8}
+            .ss-status{font-size:12px;color:#4b5563}
+            .ss-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+            .ss-card{border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;background:#fff}
+            .ss-bar{padding:8px 10px;display:flex;justify-content:space-between;align-items:center;background:#f9fafb;border-bottom:1px solid #e5e7eb;font-size:12px;color:#4b5563}
+            .ss-idx{font-weight:700;color:#111827}
+            .ss-img{display:block;width:100%}
+            .ss-foot{margin-top:12px;padding:10px;border:1px solid #e5e7eb;border-radius:8px;background:#fafafa;font-size:12px;color:#374151;line-height:1.6}
+            .ss-foot code{background:#f3f4f6;border:1px solid #e5e7eb;border-radius:6px;padding:2px 6px}
+            .ss-foot a{color:#1d4ed8;text-decoration:none;word-break:break-all}
+            .ss-foot a:hover{text-decoration:underline}
             @media (max-width:760px){.ss-grid{grid-template-columns:1fr}}
           </style>`;
 
           html += `<div class='ss-panel'>`;
-          html += `<div class='ss-top'><div class='ss-file'>File: <code>${escapeHtml(fileName)}</code></div><div class='ss-badges'><span class='ss-badge'>${imgs.length} shots</span><span class='ss-badge'>Width ${opt.width}</span><span class='ss-badge'>Head/Tail ${opt.head}% / ${opt.tail}%</span></div></div>`;
+          html += `<div class='ss-top'><div class='ss-file'>文件：<code>${escapeHtml(fileName)}</code></div><div class='ss-meta'><span>${imgs.length} 张截图</span><span>宽度 ${opt.width}</span><span>片头/片尾 ${opt.head}% / ${opt.tail}%</span></div></div>`;
+          html += `<div class='ss-action-row'>`;
+          html += `<button type='button' class='ss-btn ss-btn-primary' id='ss_zip_btn'>下载 ZIP</button>`;
+          html += `<button type='button' class='ss-btn' id='ss_copy_btn'>复制全部链接</button>`;
+          html += `<span class='ss-status' id='ss_status'>操作按钮不会关闭此弹窗，点“关闭”才会退出。</span>`;
+          html += `</div>`;
           html += `<div class='ss-grid'>` + imgs.map((u, i) => `
               <a href='${u}' target='_blank' style='text-decoration:none'>
                 <div class='ss-card'>
-                  <div class='ss-bar'><div class='ss-idx'>#${i + 1}</div><div class='ss-tip'>Open image</div></div>
+                  <div class='ss-bar'><span class='ss-idx'>#${i + 1}</span><span>新标签打开</span></div>
                   <img class='ss-img' src='${u}' loading='lazy'/>
                 </div>
               </a>`).join('') + `</div>`;
-          html += `<div class='ss-foot'>ZIP package: <code>${json.zip || 'N/A'}</code><div class='ss-links'>${zipUrl ? `ZIP download: <a href='${zipUrl}' target='_blank'>${zipUrl}</a>` : 'ZIP unavailable, use Copy All Links to copy each image URL.'}</div></div>`;
+          html += `<div class='ss-foot'>ZIP 包：<code>${json.zip || '未生成'}</code><br/>${zipUrl ? `ZIP 地址：<a href='${zipUrl}' target='_blank'>${zipUrl}</a>` : '未生成 ZIP，可使用“复制全部链接”获取每张截图地址。'}</div>`;
           html += `</div>`;
 
           Swal.fire({
-            title: 'Screenshots Ready',
+            title: '截图已生成',
             html,
             width: '980px',
             showCancelButton: true,
-            showDenyButton: true,
-            confirmButtonText: 'Download ZIP',
-            denyButtonText: 'Copy All Links',
-            cancelButtonText: 'Close',
-            confirmButtonColor: '#0284c7',
-            denyButtonColor: '#0f766e',
-            cancelButtonColor: '#475569'
-          }).then((result) => {
-            if (result.isConfirmed) {
-              if (zipUrl) {
-                window.open(zipUrl, '_blank');
-              } else if (imgs[0]) {
-                window.open(imgs[0], '_blank');
-              }
-            } else if (result.isDenied) {
-              copyText(allLinksText).then(() => {
-                Swal.fire({
-                  toast: true,
-                  position: 'top-end',
-                  icon: 'success',
-                  title: `Copied ${imgs.length} screenshot links`,
-                  showConfirmButton: false,
-                  timer: 2000
+            showConfirmButton: false,
+            cancelButtonText: '关闭',
+            cancelButtonColor: '#6b7280',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            didOpen: () => {
+              const zipBtn = document.getElementById('ss_zip_btn');
+              const copyBtn = document.getElementById('ss_copy_btn');
+              const status = document.getElementById('ss_status');
+
+              if (zipBtn) {
+                if (!zipUrl && !imgs[0]) {
+                  zipBtn.disabled = true;
+                  zipBtn.style.opacity = '0.5';
+                  zipBtn.style.cursor = 'not-allowed';
+                }
+                zipBtn.addEventListener('click', () => {
+                  if (zipUrl) {
+                    window.open(zipUrl, '_blank');
+                    if (status) status.textContent = '已在新标签页打开 ZIP 下载链接。';
+                  } else if (imgs[0]) {
+                    window.open(imgs[0], '_blank');
+                    if (status) status.textContent = '未生成 ZIP，已打开第一张截图。';
+                  }
                 });
-              }).catch(() => {
-                Swal.fire('Copy failed', 'Please copy from preview links.', 'error');
-              });
-            } else {
-              Swal.close();
+              }
+
+              if (copyBtn) {
+                copyBtn.addEventListener('click', () => {
+                  copyText(allLinksText).then(() => {
+                    if (status) status.textContent = `已复制 ${imgs.length} 条截图下载链接。`;
+                  }).catch(() => {
+                    if (status) status.textContent = '复制失败，请手动复制下方图片链接。';
+                  });
+                });
+              }
             }
           });
         })
-        .catch((e) => Swal.fire('Screenshot failed', e.toString(), 'error'));
+        .catch((e) => Swal.fire('截图失败', e.toString(), 'error'));
     });
   }
 
