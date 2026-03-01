@@ -313,6 +313,7 @@ uninstall() {
     fi
 
     # 二次确认：Vertex 删除由用户确认
+    # Vertex purge confirmation
     local vx_detected="false"
     if command -v docker >/dev/null 2>&1; then
         docker ps -a --format "{{.Names}}" 2>/dev/null | grep -qx "vertex" && vx_detected="true"
@@ -320,14 +321,17 @@ uninstall() {
     if [[ -d "$target_home/vertex" || -d "/root/vertex" ]]; then
         vx_detected="true"
     fi
+
     local VX_PURGE="Y"
+    echo -e "${YELLOW}=================================================${NC}"
     if [[ "$vx_detected" == "true" ]]; then
-        echo -e "${YELLOW}=================================================${NC}"
-        log_warn "检测到 Vertex 容器/数据痕迹，删除后不可恢复。"
-        read -p "是否一并删除 Vertex（容器/镜像/数据）？[Y/n]: " VX_PURGE < /dev/tty
-        VX_PURGE=${VX_PURGE:-Y}
-        echo -e "${YELLOW}=================================================${NC}"
+        log_warn "Detected Vertex container/data traces. Deletion is irreversible."
+    else
+        log_warn "No obvious Vertex traces detected, but you can still choose to run Vertex cleanup."
     fi
+    read -p "Delete Vertex (container/image/data)? [Y/n]: " VX_PURGE < /dev/tty
+    VX_PURGE=${VX_PURGE:-Y}
+    echo -e "${YELLOW}=================================================${NC}"
 
     execute_with_spinner "停止并移除服务守护进程" sh -c "
         systemctl stop qbittorrent-nox@${target_user} 2>/dev/null || true
