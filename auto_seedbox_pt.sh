@@ -1401,6 +1401,7 @@ install_apps() {
         if [[ "$need_init" == "false" ]]; then
             cat << 'EOF_PYTHON' > "$TEMP_DIR/vx_fix.py"
 import json, os, codecs, sys
+from urllib.parse import urlparse, urlunparse
 
 vx_dir = sys.argv[1]
 app_user = sys.argv[2]
@@ -1415,15 +1416,54 @@ def log_err(msg):
         f.write(msg + "\n")
 
 def update_json(path, modifier_func):
-    if not os.path.exists(path) or not path.endswith('.json'): return
+    if not os.path.exists(path) or not path.endswith('.json'):
+        return
     try:
         with codecs.open(path, "r", "utf-8-sig") as f:
             data = json.load(f)
-        if modifier_func(data):
+        changed = modifier_func(data)
+        if changed:
             with codecs.open(path, "w", "utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
     except Exception as e:
         log_err(f"Failed to process {path}: {str(e)}")
+
+def normalize_client_url(url: str) -> str:
+    """Vertex 容器内访问 qB 的 URL 修复策略：
+    - 如果备份里是 localhost/127.0.0.1/0.0.0.0/容器网关等“本地指向”，则改为 http://{gw_ip}:{qb_port}
+    - 如果备份里是远程 IP/域名（多下载器场景），保留 host；若未写端口则补 qb_port
+    """
+    if not url or not isinstance(url, str):
+        return f"http://{gw_ip}:{qb_port}"
+
+    try:
+        p = urlparse(url)
+    except Exception:
+        return f"http://{gw_ip}:{qb_port}"
+
+    scheme = p.scheme or "http"
+    host = p.hostname or ""
+    port = p.port
+
+    local_hosts = {"127.0.0.1", "localhost", "0.0.0.0", "172.17.0.1", gw_ip}
+
+    if host in local_hosts or host == "":
+        # 强制容器网关直连
+        new_host = gw_ip
+        new_port = int(qb_port)
+        scheme = "http"
+    else:
+        # 多下载器：保留原 host/域名
+        new_host = host
+        new_port = port if port else int(qb_port)
+
+    # IPv6 处理
+    if ":" in new_host and not new_host.startswith("["):
+        netloc = f"[{new_host}]:{new_port}"
+    else:
+        netloc = f"{new_host}:{new_port}"
+
+    return urlunparse((scheme, netloc, p.path or "", p.params or "", p.query or "", p.fragment or ""))
 
 def fix_setting(d):
     d["username"] = app_user
@@ -1436,13 +1476,29 @@ client_dir = os.path.join(vx_dir, "client")
 if os.path.exists(client_dir):
     for fname in os.listdir(client_dir):
         def fix_client(d):
+            if not isinstance(d, dict):
+                return False
             c_type = d.get("client", "") or d.get("type", "")
-            if "qBittorrent" in c_type or "qbittorrent" in c_type.lower():
-                d["clientUrl"] = f"http://{gw_ip}:{qb_port}"
-                d["username"] = app_user
-                d["password"] = app_pass
-                return True
+            if "qbittorrent" in (c_type or "").lower():
+                old_url = d.get("clientUrl") or d.get("clientURL") or d.get("url") or ""
+                new_url = normalize_client_url(old_url)
+
+                changed = False
+                if d.get("clientUrl") != new_url:
+                    d["clientUrl"] = new_url
+                    changed = True
+
+                # 统一账号密码（与脚本参数一致）
+                if d.get("username") != app_user:
+                    d["username"] = app_user
+                    changed = True
+                if d.get("password") != app_pass:
+                    d["password"] = app_pass
+                    changed = True
+
+                return changed
             return False
+
         update_json(os.path.join(client_dir, fname), fix_client)
 EOF_PYTHON
             python3 "$TEMP_DIR/vx_fix.py" "$HB/vertex/data" "$APP_USER" "$vx_pass_md5" "$gw" "$QB_WEB_PORT" "$APP_PASS"
@@ -1655,7 +1711,7 @@ echo -e "${CYAN}       / _ | / __/ |/ _ \\ ${NC}"
 echo -e "${CYAN}      / __ |_\\ \\  / ___/ ${NC}"
 echo -e "${CYAN}     /_/ |_/___/ /_/     ${NC}"
 echo -e "${BLUE}================================================================${NC}"
-echo -e "${PURPLE}     ✦ Auto-Seedbox-PT (ASP) 极限部署引擎 v3.5.2 ✦${NC}"
+echo -e "${PURPLE}     ✦ Auto-Seedbox-PT (ASP) 极限部署引擎 v3.5.3 ✦${NC}"
 echo -e "${PURPLE}     ✦               作者：Supcutie              ✦${NC}"
 echo -e "${GREEN}    🚀 一键部署 qBittorrent + Vertex + FileBrowser 刷流引擎${NC}"
 echo -e "${YELLOW}   💡 GitHub：https://github.com/yimouleng/Auto-Seedbox-PT ${NC}"
@@ -1751,7 +1807,7 @@ fi
 
 export DEBIAN_FRONTEND=noninteractive
 execute_with_spinner "修复系统包状态" sh -c "dpkg --configure -a && apt-get --fix-broken install -y >/dev/null 2>&1 || true"
-execute_with_spinner "安装依赖 (curl/jq/python3...)" sh -c "apt-get -qq update && apt-get -qq install -y curl wget jq unzip tar python3 net-tools ethtool iptables mediainfo"
+execute_with_spinner "安装依赖 (curl/jq/python3...)" sh -c "apt-get -qq update && apt-get -qq install -y curl wget jq unzip tar python3 net-tools ethtool iptables mediainfo locales"
 
 if [[ "$CUSTOM_PORT" == "true" ]]; then
     echo -e " ${CYAN}╔══════════════════ 自定义端口 ════════════════╗${NC}"
