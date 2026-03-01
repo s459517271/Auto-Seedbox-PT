@@ -1606,7 +1606,7 @@ EOF_PY
 \
         # ================= 截图功能（FileBrowser 内一键截图） =================
         # 前端注入脚本：asp-screenshot.js（依赖 SweetAlert2，已在本脚本中拉取）
-        cat > https://github.com/yimouleng/Auto-Seedbox-PT/raw/refs/heads/screenshot/asp-screenshot.js << 'EOF_JS'
+        cat > /usr/local/bin/asp-screenshot.js << 'EOF_JS'
 /* Auto-Seedbox-PT: FileBrowser Screenshot Extension (SweetAlert2 UI) */
 (function () {
   const SS_API = "/api/ss";
@@ -1753,7 +1753,7 @@ EOF_PY
   ensureButton();
 })();
 EOF_JS
-        chmod +x https://github.com/yimouleng/Auto-Seedbox-PT/raw/refs/heads/screenshot/asp-screenshot.js
+        chmod +x /usr/local/bin/asp-screenshot.js
 
         # 后端截图服务：asp-screenshot.py（调用 ffmpeg 抽帧，输出到 /tmp）
         cat > /usr/local/bin/asp-screenshot.py << 'EOF_PY_SS'
@@ -1924,7 +1924,15 @@ EOF
         systemctl daemon-reload && systemctl enable asp-screenshot.service >/dev/null 2>&1
         systemctl restart asp-screenshot.service
 
-        cat > /etc/systemd/system/asp-mediainfo.service << EOF
+        
+# Download asp-screenshot.js from GitHub to local server
+if [ ! -f "/usr/local/bin/asp-screenshot.js" ]; then
+    wget -q -O /usr/local/bin/asp-screenshot.js https://github.com/yimouleng/Auto-Seedbox-PT/raw/refs/heads/screenshot/asp-screenshot.js
+    chmod +x /usr/local/bin/asp-screenshot.js
+fi
+
+
+cat > /etc/systemd/system/asp-mediainfo.service << EOF
 [Unit]
 Description=ASP MediaInfo API Service
 After=network.target
@@ -1972,7 +1980,7 @@ server {
     }
 
 location = /asp-screenshot.js {
-    alias https://github.com/yimouleng/Auto-Seedbox-PT/raw/refs/heads/screenshot/asp-screenshot.js;
+    alias /usr/local/bin/asp-screenshot.js;
     add_header Content-Type "application/javascript; charset=utf-8";
 }
 
