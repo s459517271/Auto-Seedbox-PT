@@ -507,6 +507,44 @@ optimize_system() {
     echo ""
     echo -e " ${CYAN}╔══════════════════ 系统内核优化 (ASP-Tuned Elite) ══════════════════╗${NC}"
     echo ""
+
+    # ====== 【新增】容器环境侦测与阻断机制 ======
+    local VIRT_TYPE
+    VIRT_TYPE=$(systemd-detect-virt 2>/dev/null || echo "unknown")
+    [[ -d "/proc/vz" ]] && VIRT_TYPE="openvz"
+    # Fallback: some minimal/container images may miss systemd-detect-virt
+    if [[ "$VIRT_TYPE" == "unknown" || "$VIRT_TYPE" == "none" ]]; then
+        [[ -f "/run/systemd/container" ]] && grep -q "^lxc$" /run/systemd/container 2>/dev/null && VIRT_TYPE="lxc"
+        [[ "$VIRT_TYPE" != "lxc" ]] && grep -qaE "(^|/)lxc(/|$)" /proc/1/cgroup 2>/dev/null && VIRT_TYPE="lxc"
+    fi
+
+    if [[ "$VIRT_TYPE" == "lxc" || "$VIRT_TYPE" == "openvz" ]]; then
+        echo -e "  ${YELLOW}[!] 检测到当前环境为 $VIRT_TYPE 容器。${NC}"
+        echo -e "  ${YELLOW}[!] 容器共享宿主机内核，无法越权修改底层 TCP 拥塞控制与调度策略。${NC}"
+        echo -e "  ${YELLOW}[!] 已智能跳过内核级优化，防止安装报错中断。${NC}"
+        echo -e "  ${GREEN}  ↳ 注: qBittorrent 应用层优化(连接数/内存/线程等)已通过API注入，不受影响！${NC}"
+
+        # 尽力而为：在容器中依然尝试提升文件描述符限制 (这通常是被允许的)
+        if ! grep -q "# Auto-Seedbox-PT Limits BEGIN" /etc/security/limits.conf 2>/dev/null; then
+            if [[ -w /etc/security/limits.conf ]]; then
+                cat >> /etc/security/limits.conf << EOF || log_warn "容器内写入 limits.conf 失败，已继续执行。"
+
+# Auto-Seedbox-PT Limits BEGIN
+* hard nofile 1048576
+* soft nofile 1048576
+root hard nofile 1048576
+root soft nofile 1048576
+# Auto-Seedbox-PT Limits END
+EOF
+            else
+                log_warn "容器内无法写入 /etc/security/limits.conf，已跳过 nofile 提升。"
+            fi
+        fi
+        echo ""
+        return 0 # 提前退出函数，阻止后续 sysctl 和底层脚本的执行
+    fi
+    # ============================================
+
     echo -e "  ${CYAN}▶ 正在深度接管系统调度与网络协议栈...${NC}"
 
     local mem_kb mem_gb_sys disk_class
