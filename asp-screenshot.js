@@ -72,9 +72,6 @@
         }
     }, true);
 
-   // ==========================================
-    // 弹窗1：参数设置面板 (现代极简浅色版)
-    // ==========================================
     async function promptSettings(fileName) {
         if (typeof Swal === "undefined") {
             alert("界面组件加载中，请稍后重试。");
@@ -102,44 +99,30 @@
 
         const html = `
             <style>
-                /* 全局与排版 (浅色) */
                 .ss-wrap { text-align: left; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; color: #1f2937; }
                 .ss-head { margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px dashed #e5e7eb; }
                 .ss-title { font-size: 18px; font-weight: 600; color: #111827; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
                 .ss-sub { font-size: 13px; color: #6b7280; margin-bottom: 12px; display: flex; align-items: center; }
                 .ss-sub code { font-family: 'Consolas', monospace; background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 4px; padding: 2px 6px; color: #ec4899; margin-left: 8px; word-break: break-all; }
-                
-                /* 彩色信息徽章 */
                 .ss-meta { display: flex; gap: 10px; flex-wrap: wrap; }
                 .ss-pill { font-size: 12px; font-family: 'Consolas', monospace; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 4px 10px; color: #1d4ed8; display: inline-flex; align-items: center; }
-                .ss-pill.fmt { background: #f0fdf4; color: #15803d; border-color: #bbf7d0; } /* 清爽绿 */
-
-                /* 表单网格 */
+                .ss-pill.fmt { background: #f0fdf4; color: #15803d; border-color: #bbf7d0; }
                 .ss-form { display: grid; grid-template-columns: 130px 1fr; gap: 20px 16px; align-items: start; }
                 .ss-form label { font-size: 14px; font-weight: 600; color: #374151; padding-top: 6px; }
                 .ss-control { display: flex; flex-direction: column; gap: 10px; }
-
-                /* 现代输入框 */
                 .ss-input-box { display: flex; align-items: center; position: relative; }
                 .ss-form input[type='number'] { width: 100%; padding: 8px 12px; border-radius: 6px; border: 1px solid #d1d5db; background: #fff; color: #111827; outline: none; font-family: 'Consolas', monospace; font-size: 14px; transition: all 0.2s ease; box-shadow: inset 0 1px 2px rgba(0,0,0,0.02); }
                 .ss-form input[type='number']:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15), inset 0 1px 2px rgba(0,0,0,0.02); }
-                
-                /* 药丸快捷标签 (悬浮变色) */
                 .ss-chip-row { display: flex; gap: 8px; flex-wrap: wrap; }
                 .ss-chip { cursor: pointer; padding: 5px 12px; border-radius: 20px; border: 1px solid #d1d5db; background: #fff; color: #4b5563; font-size: 12px; font-family: 'Consolas', monospace; user-select: none; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
                 .ss-chip:hover { border-color: #9ca3af; background: #f9fafb; }
                 .ss-chip.active { background: #eff6ff; border-color: #60a5fa; color: #1d4ed8; font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-
-                /* 浅色精致滑动条 */
                 .ss-range-wrap { display: flex; align-items: center; gap: 12px; }
                 .ss-form input[type='range'] { -webkit-appearance: none; width: 100%; background: transparent; height: 24px; margin: 0; outline: none; }
                 .ss-form input[type='range']::-webkit-slider-runnable-track { width: 100%; height: 6px; background: #e5e7eb; border-radius: 3px; }
                 .ss-form input[type='range']::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: #3b82f6; cursor: pointer; margin-top: -5px; box-shadow: 0 2px 4px rgba(0,0,0,0.15); transition: transform 0.1s; }
                 .ss-form input[type='range']::-webkit-slider-thumb:hover { transform: scale(1.15); background: #2563eb; }
-                
-                /* 动态数值显示 */
                 .ss-val { display: inline-flex; justify-content: center; align-items: center; min-width: 44px; background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 6px; padding: 4px 6px; color: #374151; font-family: 'Consolas', monospace; font-size: 12px; font-weight: bold; }
-
                 @media (max-width:760px) { .ss-form { grid-template-columns: 1fr; gap: 12px; } }
             </style>
 
@@ -194,13 +177,13 @@
 
         const result = await Swal.fire({
             html: html,
-            width: '680px', 
-            background: '#ffffff', // 回归干净的纯白背景
+            width: '680px',
+            background: '#ffffff',
             showCancelButton: true,
             confirmButtonText: "🚀 开始执行截图",
             cancelButtonText: "取消",
-            confirmButtonColor: "#3b82f6", // 明快的蓝色按钮
-            cancelButtonColor: "#9ca3af",  // 柔和的灰色取消按钮
+            confirmButtonColor: "#3b82f6",
+            cancelButtonColor: "#9ca3af",
             allowOutsideClick: true,
             allowEscapeKey: true,
             didOpen: () => {
@@ -215,7 +198,6 @@
                 const nInput = document.getElementById("ss_n");
                 const wInput = document.getElementById("ss_w");
 
-                // 点击标签高亮并同步 Input
                 const bindChips = (containerId, inputEl, dataAttr) => {
                     const container = document.getElementById(containerId);
                     container.addEventListener("click", (e) => {
@@ -229,8 +211,7 @@
 
                 bindChips("ss_n_chips", nInput, "data-n");
                 bindChips("ss_w_chips", wInput, "data-w");
-                
-                // 默认点亮当前值的 chip
+
                 document.querySelector(`.ss-chip[data-n="6"]`)?.classList.add('active');
                 document.querySelector(`.ss-chip[data-w="${origW}"]`)?.classList.add('active');
             },
@@ -248,9 +229,6 @@
         return result.isConfirmed ? result.value : null;
     }
 
-    // ==========================================
-    // 弹窗2：结果展示面板 (深色极客UI + 按钮交互)
-    // ==========================================
     function openScreenshot(fileName) {
         promptSettings(fileName).then((opt) => {
             if (!opt) return;
@@ -311,7 +289,6 @@
                         </div>
                     `;
 
-                    // 使用 Swal 的原生多按钮生态替代手动注入 DOM
                     Swal.fire({
                         title: "截图已生成",
                         html: html,
@@ -319,15 +296,13 @@
                         allowOutsideClick: true,
                         allowEscapeKey: true,
                         showCancelButton: true,
-                        showDenyButton: !!zipUrl, // 如果有 ZIP 才显示下载按钮
+                        showDenyButton: !!zipUrl,
                         confirmButtonText: "📋 复制全部链接",
                         denyButtonText: "📦 下载 ZIP 压缩包",
                         cancelButtonText: "关闭",
-                        confirmButtonColor: "#28a745", // 绿色
-                        denyButtonColor: "#3085d6",    // 蓝色
+                        confirmButtonColor: "#28a745",
+                        denyButtonColor: "#3085d6",
                         cancelButtonColor: "#555",
-                        
-                        // 拦截“复制链接”点击
                         preConfirm: () => {
                             copyText(allLinksText).then(() => {
                                 let btn = Swal.getConfirmButton();
@@ -337,17 +312,15 @@
                             }).catch(() => {
                                 alert("复制失败，请手动处理。");
                             });
-                            return false; // 阻断窗口关闭
+                            return false;
                         },
-                        
-                        // 拦截“下载 ZIP”点击
                         preDeny: () => {
                             if (zipUrl) window.open(zipUrl, "_blank");
                             let btn = Swal.getDenyButton();
                             let origText = btn.innerHTML;
                             btn.innerHTML = '✅ 已在新标签页打开下载';
                             setTimeout(() => { btn.innerHTML = origText; }, 2000);
-                            return false; // 阻断窗口关闭
+                            return false;
                         }
                     });
                 })
@@ -355,9 +328,41 @@
         });
     }
 
-    // ==========================================
-    // 注入按钮逻辑 (仿 MediaInfo)
-    // ==========================================
+    function getAnchorButton(menu) {
+        if (!menu) return null;
+        return menu.querySelector([
+            'button[aria-label="Info"]',
+            'button[title="Info"]',
+            'button[aria-label="信息"]',
+            'button[title="信息"]',
+            'button[aria-label="详情"]',
+            'button[title="详情"]'
+        ].join(','));
+    }
+
+    function getActionMenus() {
+        const menus = new Set();
+
+        document.querySelectorAll('#dropdown, .context-menu').forEach((menu) => {
+            if (menu && menu.querySelector('button.action')) {
+                menus.add(menu);
+            }
+        });
+
+        document.querySelectorAll([
+            'button[aria-label="Info"]',
+            'button[title="Info"]',
+            'button[aria-label="信息"]',
+            'button[title="信息"]',
+            'button[aria-label="详情"]',
+            'button[title="详情"]'
+        ].join(',')).forEach((btn) => {
+            if (btn.parentElement) menus.add(btn.parentElement);
+        });
+
+        return menus;
+    }
+
     let observerTimer = null;
     const observer = new MutationObserver(() => {
         if (observerTimer) clearTimeout(observerTimer);
@@ -375,10 +380,7 @@
             }
 
             const ok = isMedia(targetFile);
-            const menus = new Set();
-            document.querySelectorAll('button[aria-label="Info"]').forEach((btn) => {
-                if (btn.parentElement) menus.add(btn.parentElement);
-            });
+            const menus = getActionMenus();
 
             menus.forEach((menu) => {
                 const existingBtn = menu.querySelector(".asp-ss-btn-class");
@@ -401,9 +403,12 @@
                         if (miBtn) {
                             miBtn.insertAdjacentElement("afterend", btn);
                         } else {
-                            const infoBtn = menu.querySelector('button[aria-label="Info"]');
-                            if (infoBtn) infoBtn.insertAdjacentElement("afterend", btn);
-                            else menu.appendChild(btn);
+                            const anchorBtn = getAnchorButton(menu);
+                            if (anchorBtn) {
+                                anchorBtn.insertAdjacentElement("afterend", btn);
+                            } else {
+                                menu.appendChild(btn);
+                            }
                         }
                     } else {
                         const miBtn = menu.querySelector(".asp-mi-btn-class");
