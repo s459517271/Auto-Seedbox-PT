@@ -35,7 +35,7 @@ BLUE='\033[0;34m'
 PURPLE='\033[0;35m'
 CYAN='\033[0;36m'
 NC='\033[0m'
-ASP_VERSION="3.7.2"
+ASP_VERSION="3.7.3"
 
 QB_WEB_PORT=8080
 QB_BT_PORT=47878
@@ -303,7 +303,24 @@ detect_download_disk_class() {
 }
 
 get_total_mem_mb() {
-    free -m | awk '/^Mem:/{print $2}'
+    local mem_kb="" mem_mb=""
+
+    if [[ -r /proc/meminfo ]]; then
+        mem_kb=$(awk '/^MemTotal:[[:space:]]+[0-9]+/ {print $2; exit}' /proc/meminfo 2>/dev/null || true)
+        if [[ "$mem_kb" =~ ^[0-9]+$ ]] && (( mem_kb > 0 )); then
+            echo $((mem_kb / 1024))
+            return 0
+        fi
+    fi
+
+    # Fallback only for unusual Linux environments; force C locale so "Mem:" is stable.
+    mem_mb=$(LC_ALL=C free -m 2>/dev/null | awk '/^Mem:/ {print $2; exit}' || true)
+    if [[ "$mem_mb" =~ ^[0-9]+$ ]] && (( mem_mb > 0 )); then
+        echo "$mem_mb"
+        return 0
+    fi
+
+    return 1
 }
 
 detect_qb_profile() {
@@ -369,19 +386,13 @@ choose_default_qb_cache() {
 }
 
 qb_api_wait_ready() {
-    local attempts="${1:-30}"
-    local delay="${2:-2}"
-    local restarted="false"
-    local i
-
+    local attempts="${1:-40}" delay="${2:-2}" i base
+    base="http://127.0.0.1:${QB_WEB_PORT}"
     for ((i=1; i<=attempts; i++)); do
-        if curl -fsS --max-time 2 "http://127.0.0.1:${QB_WEB_PORT}/api/v2/app/version" >/dev/null 2>&1; then
+        if curl -fsS --max-time 2 \
+            -H "Referer: ${base}" -H "Origin: ${base}" \
+            "${base}/api/v2/app/version" >/dev/null 2>&1; then
             return 0
-        fi
-
-        if [[ "$restarted" == "false" && $i -eq $((attempts / 2)) ]]; then
-            systemctl restart "qbittorrent-nox@$APP_USER" >/dev/null 2>&1 || true
-            restarted="true"
         fi
         sleep "$delay"
     done
@@ -389,69 +400,77 @@ qb_api_wait_ready() {
 }
 
 qb_api_login() {
-    local cookie_file="$1"
-    local attempt response
-
+    local cookie_file="$1" attempt response base
+    base="http://127.0.0.1:${QB_WEB_PORT}"
     rm -f "$cookie_file" 2>/dev/null || true
     for attempt in 1 2 3; do
         response=$(curl -fsS -c "$cookie_file" --max-time 6 \
+            -H "Referer: ${base}" -H "Origin: ${base}" \
             --data-urlencode "username=$APP_USER" \
             --data-urlencode "password=$APP_PASS" \
-            "http://127.0.0.1:${QB_WEB_PORT}/api/v2/auth/login" 2>/dev/null || true)
-        [[ "$response" == "Ok." ]] && return 0
+            "${base}/api/v2/auth/login" 2>/dev/null || true)
+        if [[ "$response" == "Ok." && -s "$cookie_file" ]]; then
+            return 0
+        fi
         sleep "$attempt"
     done
     return 1
 }
 
 qb_api_get_preferences() {
-    local cookie_file="$1"
-    local output_file="$2"
-
+    local cookie_file="$1" output_file="$2" base
+    base="http://127.0.0.1:${QB_WEB_PORT}"
     curl -fsS -b "$cookie_file" --max-time 8 \
-        "http://127.0.0.1:${QB_WEB_PORT}/api/v2/app/preferences" > "$output_file"
+        -H "Referer: ${base}" -H "Origin: ${base}" \
+        "${base}/api/v2/app/preferences" > "$output_file"
 }
 
 qb_api_set_preferences() {
-    local cookie_file="$1"
-    local payload_file="$2"
-    local http_code
-
-    http_code=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 8 \
+    local cookie_file="$1" payload_file="$2" code base
+    base="http://127.0.0.1:${QB_WEB_PORT}"
+    code=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 8 \
         -b "$cookie_file" \
-        -X POST \
-        --data-urlencode "json@${payload_file}" \
-        "http://127.0.0.1:${QB_WEB_PORT}/api/v2/app/setPreferences" || echo "000")
-    [[ "$http_code" == "200" ]]
+        -H "Referer: ${base}" -H "Origin: ${base}" \
+        -X POST --data-urlencode "json@${payload_file}" \
+        "${base}/api/v2/app/setPreferences" 2>/dev/null || true)
+    [[ "$code" == "200" || "$code" == "204" ]]
 }
 
 qb_api_apply_preferences() {
     local patch_file="$1"
     local cookie_file="$TEMP_DIR/qb_cookie.txt"
-    local current_pref="$TEMP_DIR/current_pref.json"
-    local final_pref="$TEMP_DIR/final_pref.json"
-    local attempt
+    local current_pref="$TEMP_DIR/qb_current_pref.json"
+    local final_pref="$TEMP_DIR/qb_final_pref.json"
+    local attempt count
 
-    qb_api_wait_ready 30 2 || return 1
+    qb_api_wait_ready 40 2 || return 1
 
     for attempt in 1 2 3; do
         qb_api_login "$cookie_file" || { sleep "$attempt"; continue; }
         qb_api_get_preferences "$cookie_file" "$current_pref" || { sleep "$attempt"; continue; }
 
-        if command -v jq >/dev/null 2>&1; then
-            jq -s '.[0] * .[1]' "$current_pref" "$patch_file" > "$final_pref" 2>/dev/null || cp "$patch_file" "$final_pref"
-        else
-            cp "$patch_file" "$final_pref"
+        # patch first, current second: keep only patch keys supported by this qB build.
+        if ! jq -s '
+          .[0] as $patch | .[1] as $current |
+          $patch | with_entries(select(.key as $k | $current | has($k)))
+        ' "$patch_file" "$current_pref" > "$final_pref" 2>/dev/null; then
+            sleep "$attempt"
+            continue
+        fi
+
+        count=$(jq 'length' "$final_pref" 2>/dev/null || echo 0)
+        [[ "$count" =~ ^[0-9]+$ ]] || count=0
+        if (( count == 0 )); then
+            log_warn "qB 当前版本未暴露本次 API 调优字段，跳过 API 写入。"
+            return 0
         fi
 
         if qb_api_set_preferences "$cookie_file" "$final_pref"; then
-            rm -f "$cookie_file" "$current_pref" "$final_pref"
             return 0
         fi
         sleep "$attempt"
     done
 
-    rm -f "$cookie_file" "$current_pref" "$final_pref"
     return 1
 }
 
@@ -1088,16 +1107,17 @@ flock -n 9 || exit 0
 TAG="${AUTOTUNE_LOGGER_TAG:-asp-qb-autotune}"
 QBIT_URL="http://127.0.0.1:${QB_WEB_PORT}"
 
+QB_API_HEADERS=(-H "Referer: ${QBIT_URL}" -H "Origin: ${QBIT_URL}")
 qb_cookie_valid() {
   [[ -s "$COOKIE_FILE" ]] || return 1
-  curl -fsS -b "$COOKIE_FILE" --max-time 4 "${QBIT_URL}/api/v2/app/preferences" >/dev/null 2>&1
+  curl -fsS "${QB_API_HEADERS[@]}" -b "$COOKIE_FILE" --max-time 4 "${QBIT_URL}/api/v2/app/preferences" >/dev/null 2>&1
 }
 
 qb_login() {
   local attempt response
   rm -f "$COOKIE_FILE" 2>/dev/null || true
   for attempt in 1 2 3; do
-    response=$(curl -fsS -c "$COOKIE_FILE" --max-time 6 \
+    response=$(curl -fsS "${QB_API_HEADERS[@]}" -c "$COOKIE_FILE" --max-time 6 \
       --data-urlencode "username=${APP_USER}" \
       --data-urlencode "password=${APP_PASS}" \
       "${QBIT_URL}/api/v2/auth/login" 2>/dev/null || true)
@@ -1115,13 +1135,13 @@ qb_ensure_login() {
 qb_apply_patch() {
   local payload_file="$1"
   local code
-  code=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 6 -b "$COOKIE_FILE" \
+  code=$(curl -sS "${QB_API_HEADERS[@]}" -o /dev/null -w "%{http_code}" --max-time 6 -b "$COOKIE_FILE" \
     -X POST --data-urlencode "json@${payload_file}" \
     "${QBIT_URL}/api/v2/app/setPreferences" || echo "000")
-  [[ "$code" == "200" ]]
+  [[ "$code" == "200" || "$code" == "204" ]]
 }
 
-if ! curl -fsS --max-time 2 "${QBIT_URL}/api/v2/app/version" >/dev/null 2>&1; then
+if ! curl -fsS "${QB_API_HEADERS[@]}" --max-time 2 "${QBIT_URL}/api/v2/app/version" >/dev/null 2>&1; then
   exit 0
 fi
 
@@ -1442,7 +1462,7 @@ patch = {
     "bdecode_depth_limit": 10000,
     "bdecode_token_limit": 10000000,
     "strict_super_seeding": False,
-    "max_ratio_action": 0,
+    "max_ratio_act": 0,
     "max_ratio": -1,
     "max_seeding_time": -1,
     "file_pool_size": 5000 if total < 8192 else 8192,
