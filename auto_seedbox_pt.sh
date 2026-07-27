@@ -149,6 +149,11 @@ validate_pass() {
     [[ ${#1} -ge 12 ]] || log_err "安全性不足：密码长度必须 ≥ 12 位！"
 }
 
+write_shell_assignment() {
+    local name="$1" value="$2"
+    printf '%s=%q\n' "$name" "$value"
+}
+
 wait_for_lock() {
     local max_wait=300
     local waited=0
@@ -1072,7 +1077,6 @@ install_autotune_m1() {
     cat > "$AUTOTUNE_ENV" << EOF
 QB_WEB_PORT=$QB_WEB_PORT
 APP_USER=$APP_USER
-APP_PASS=$APP_PASS
 DISK_CLASS=$disk_class
 INSTALLED_MAJOR_VER=$INSTALLED_MAJOR_VER
 BASE_AIO=$QB_PROFILE_AIO
@@ -1084,6 +1088,7 @@ AUTOTUNE_MEM_LOW_FLOOR_MB=768
 AUTOTUNE_PSI_GUARD=0.02
 AUTOTUNE_LOGGER_TAG=asp-qb-autotune
 EOF
+    write_shell_assignment APP_PASS "$APP_PASS" >> "$AUTOTUNE_ENV"
     chmod 600 "$AUTOTUNE_ENV"
 
     cat > "$AUTOTUNE_BIN" << 'EOF_AUTOTUNE'
@@ -1526,6 +1531,13 @@ PY
     fi
 
     rm -f "$patch_file"
+}
+
+create_filebrowser_admin() {
+    docker run --rm --user 0:0 \
+        -v "$HB/filebrowser_data:/database" \
+        filebrowser/filebrowser:latest -d /database/filebrowser.db \
+        users add "$APP_USER" "$APP_PASS" --perm.admin >/dev/null 2>&1 || true
 }
 
 install_apps() {
@@ -2142,7 +2154,7 @@ EOF_NGINX
 
         execute_with_spinner "拉取 FileBrowser 镜像" docker pull filebrowser/filebrowser:latest
         execute_with_spinner "初始化 FileBrowser 数据库" sh -c "docker run --rm --user 0:0 -v \"$HB/filebrowser_data\":/database filebrowser/filebrowser:latest -d /database/filebrowser.db config init >/dev/null 2>&1 || true"
-        execute_with_spinner "创建 FileBrowser 管理员" sh -c "docker run --rm --user 0:0 -v \"$HB/filebrowser_data\":/database filebrowser/filebrowser:latest -d /database/filebrowser.db users add \"$APP_USER\" \"$APP_PASS\" --perm.admin >/dev/null 2>&1 || true"
+        execute_with_spinner "创建 FileBrowser 管理员" create_filebrowser_admin
         execute_with_spinner "启动 FileBrowser 容器" docker run -d --name filebrowser --restart unless-stopped --user 0:0 \
             -v "$HB":/srv -v "$HB/filebrowser_data":/database -v "$HB/.config/filebrowser":/config \
             -p 127.0.0.1:18081:80 filebrowser/filebrowser:latest -d /database/filebrowser.db
